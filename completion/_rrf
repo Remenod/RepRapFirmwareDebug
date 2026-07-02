@@ -1,0 +1,64 @@
+#compdef rrf.sh rrf
+# zsh completion for rrf.sh — the RepRapFirmware workspace manager.
+#
+# Completes the sub-command and, for build/rebuild, the available firmware
+# targets. Targets are read live from repos/RepRapFirmware/.cproject in the
+# workspace (the directory the ./rrf.sh being completed lives in, or $PWD), so
+# they stay correct as configurations are added/removed; a static list is the
+# fallback when the checkout isn't present.
+
+# Echo the buildable target names, one per line.
+_rrf_targets() {
+  local cmd=${words[1]} ws cproj
+  if [[ $cmd == */* ]]; then ws=${cmd:h}; else ws=$PWD; fi   # :h = dirname
+  cproj=$ws/repos/RepRapFirmware/.cproject
+
+  if [[ -r $cproj ]]; then
+    grep -oE '<configuration[^>]* name="[^"]+"' $cproj 2>/dev/null \
+      | sed 's/.*name="//; s/"$//' | sort -u
+  else
+    print -l -- Duet2 Duet2_SBC Duet3_CAN0 Duet3_Debug Duet3_MB6HC \
+      Duet3_MB6HC_no_SD Duet3_MB6XD Duet3Mini5plus Duet3Mini5plus_Debug \
+      Duet3MiniATE DuetMaestro FMDC_V03 PCCB_10
+  fi
+}
+
+_rrf() {
+  local curcontext="$curcontext" state line expl ret=1
+  typeset -A opt_args
+  local -a t
+
+  _arguments -C \
+    '(- *)'{-h,--help}'[show help and exit]' \
+    '1: :->command' \
+    '*:: :->args' && ret=0
+
+  case $state in
+    command)
+      local -a cmds=(
+        'doctor:check the environment and report what is missing/wrong'
+        'bootstrap:one-time setup — toolchains, repos, CrcAppender'
+        'build:incremental build of a target'
+        'rebuild:clean build (wipe Eclipse metadata, re-import)'
+        'clean:remove build outputs and Eclipse metadata'
+        'help:show usage'
+      )
+      _describe -t commands 'rrf command' cmds && ret=0
+      ;;
+    args)
+      case ${line[1]} in
+        build|rebuild)
+          t=( ${(f)"$(_rrf_targets)"} )
+          _wanted targets expl 'build target' compadd -a t && ret=0
+          ;;
+        bootstrap|setup|init)
+          _arguments '--sync[fast-forward clean repos onto their pinned ref]' && ret=0
+          ;;
+      esac
+      ;;
+  esac
+
+  return ret
+}
+
+_rrf "$@"

@@ -1,7 +1,7 @@
 # RepRapFirmwareDebug
 
 A self-contained workspace for building [RepRapFirmware](https://github.com/Duet3D/RepRapFirmware)
-(the Duet 3D-printer firmware) from a personal fork, with all of its sibling
+(the Duet 3D-printer firmware) from a fork, together with all of its sibling
 dependencies and a pinned toolchain. Everything is driven by a single script,
 [`rrf.sh`](./rrf.sh) — from first-time setup to incremental builds.
 
@@ -9,38 +9,41 @@ dependencies and a pinned toolchain. Everything is driven by a single script,
 
 ```
 RepRapFirmwareDebug/
-├── rrf.sh          # workspace manager — the only entry point you need
+├── rrf.sh          # workspace manager — the only entry point needed
 ├── README.md
 ├── .gitignore
+├── completion/     # shell completion for rrf.sh
 ├── tools/          # auto-downloaded ARM + Xtensa toolchains         (git-ignored)
 └── repos/          # the cloned source repos + Eclipse workspace     (git-ignored)
     ├── .metadata/                # Eclipse workspace state
-    ├── RepRapFirmware/           # ← the firmware (personal fork, see below)
+    ├── RepRapFirmware/           # the firmware (a fork, see below)
     ├── CoreN2G/  FreeRTOS/  RRFLibraries/  CANlib/
     └── DuetWiFiSocketServer/  WiFiSocketServerRTOS/
 ```
 
-Only `rrf.sh`, this README, and `.gitignore` are tracked in **this** repo. Each
-project under `repos/` is its own independent git checkout with its own remote,
-and `tools/`/`repos/` are downloaded/cloned on demand — so they are ignored here.
+Only `rrf.sh`, this README, `.gitignore`, and `completion/` are tracked in
+**this** repo. Each project under `repos/` is its own independent git checkout
+with its own remote, and `tools/`/`repos/` are downloaded/cloned on demand — so
+they are ignored here.
 
 ### The RepRapFirmware fork
 
-`repos/RepRapFirmware` tracks the personal fork rather than Duet3D directly:
+`repos/RepRapFirmware` tracks a fork rather than Duet3D directly, so changes can
+be committed and pushed while still pulling upstream updates:
 
-| Remote     | URL                                         | Purpose                    |
-|------------|---------------------------------------------|----------------------------|
-| `origin`   | `git@github.com:Remenod/RepRapFirmware.git` | your fork — push/commit here |
-| `upstream` | `https://github.com/Duet3D/RepRapFirmware.git` | pull upstream changes    |
+| Remote     | URL                                            | Purpose                     |
+|------------|------------------------------------------------|-----------------------------|
+| `origin`   | `git@github.com:Remenod/RepRapFirmware.git`    | the fork — commits/pushes go here |
+| `upstream` | `https://github.com/Duet3D/RepRapFirmware.git` | pull upstream changes       |
 
-Work happens on branch **`visionminer-3.5.4-debug`** (branched off tag `3.5.4`).
-The other six repos are plain Duet3D checkouts pinned to matching refs
+Development happens on branch **`visionminer-3.5.4-debug`** (branched off tag
+`3.5.4`). The other six repos are plain Duet3D checkouts pinned to matching refs
 (`3.5.4` for CoreN2G / FreeRTOS / RRFLibraries / CANlib, `dev` for
 DuetWiFiSocketServer, `main` for WiFiSocketServerRTOS).
 
 ## Prerequisites
 
-Install these yourself (they are not fetched automatically):
+The following must be present (they are not fetched automatically):
 
 - **Eclipse CDT** — the headless build engine; `eclipse` must be on `PATH`.
 - **.NET 6 runtime** — required *exactly* (not 7/8) by `CrcAppender`.
@@ -50,7 +53,7 @@ Install these yourself (they are not fetched automatically):
 The **ARM GCC 12.2** and **Xtensa lx106 GCC** toolchains are downloaded into
 `tools/` automatically by `bootstrap`.
 
-Run `./rrf.sh doctor` at any time to see exactly what is present or missing.
+Running `./rrf.sh doctor` reports exactly what is present or missing.
 
 ## Quick start
 
@@ -60,8 +63,8 @@ Run `./rrf.sh doctor` at any time to see exactly what is present or missing.
 ./rrf.sh build         # build the default target (Duet3_MB6HC)
 ```
 
-A fresh `bootstrap` on a new machine reproduces this exact workspace (the fork,
-the branch, and every pinned dependency).
+A fresh `bootstrap` on a new machine reproduces the workspace exactly — the
+fork, the branch, and every pinned dependency.
 
 ## Commands
 
@@ -95,7 +98,17 @@ changes. Branch switching happens only on a fresh clone or with an explicit
 
 ## Shell completion (zsh)
 
-A completion for `rrf.sh` (subcommands, `--sync`, and live build-target names)
-is maintained separately in the dotfiles repo at
-`~/.zsh/completion/_rrf`. New completion files take effect in a new shell (or
-after re-running `compinit`).
+A zsh completion for `rrf.sh` is provided in
+[`completion/_rrf`](./completion/_rrf). It completes subcommands, `--sync`, and —
+for `build`/`rebuild` — the build-target names read live from
+`repos/RepRapFirmware/.cproject`.
+
+Install it by putting the `completion/` directory on `fpath` before `compinit`
+runs — e.g. in `.zshrc`:
+
+```zsh
+fpath=(/path/to/RepRapFirmwareDebug/completion $fpath)
+autoload -Uz compinit && compinit
+```
+
+New completion files take effect in a new shell.
