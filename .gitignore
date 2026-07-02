@@ -1,0 +1,14 @@
+# Sibling repos cloned by builder.sh (each has its own git history/remote)
+/RepRapFirmware/
+/CoreN2G/
+/FreeRTOS/
+/RRFLibraries/
+/CANlib/
+/DuetWiFiSocketServer/
+/WiFiSocketServerRTOS/
+
+# Downloaded toolchains
+/tools/
+
+# Eclipse workspace metadata
+/.metadata/
