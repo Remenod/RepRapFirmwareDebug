@@ -18,6 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$SCRIPT_DIR"
 TOOLS_DIR="${WORKSPACE_DIR}/tools"
 BIN_DIR="${TOOLS_DIR}/bin"
+REPOS_DIR="${WORKSPACE_DIR}/repos"          # cloned Duet3D repos live here
+ECLIPSE_WS="${REPOS_DIR}"                    # Eclipse workspace: holds .metadata + the imported projects
 
 DEFAULT_TARGET="Duet3_MB6HC"
 
@@ -131,10 +133,10 @@ cmd_doctor() {
     local repo_missing=0
     for entry in "${REPOS[@]}"; do
         IFS='|' read -r name url ref upstream <<< "$entry"
-        if [ -d "${WORKSPACE_DIR}/${name}/.git" ]; then
+        if [ -d "${REPOS_DIR}/${name}/.git" ]; then
             local desc dirty=""
-            desc="$(git -C "${WORKSPACE_DIR}/${name}" describe --tags --always --dirty 2>/dev/null || echo '?')"
-            [ -n "$(git -C "${WORKSPACE_DIR}/${name}" status --porcelain 2>/dev/null)" ] && dirty=" ${C_YELLOW}(local changes)${C_RESET}"
+            desc="$(git -C "${REPOS_DIR}/${name}" describe --tags --always --dirty 2>/dev/null || echo '?')"
+            [ -n "$(git -C "${REPOS_DIR}/${name}" status --porcelain 2>/dev/null)" ] && dirty=" ${C_YELLOW}(local changes)${C_RESET}"
             ok "${name} — ${desc}${dirty}"
         else
             err "${name} — missing (want ref '${ref}')"
@@ -212,7 +214,8 @@ setup_compilers() {
 setup_repos() {
     local do_sync="${1:-}"
     section "Repositories"
-    cd "${WORKSPACE_DIR}"
+    mkdir -p "${REPOS_DIR}"
+    cd "${REPOS_DIR}"
 
     for entry in "${REPOS[@]}"; do
         IFS='|' read -r name url ref upstream <<< "$entry"
@@ -261,7 +264,7 @@ checkout_ref() {
 
 setup_crcappender() {
     section "CrcAppender"
-    local src="${WORKSPACE_DIR}/RepRapFirmware/Tools/CrcAppender/linux-x86_64/CrcAppender"
+    local src="${REPOS_DIR}/RepRapFirmware/Tools/CrcAppender/linux-x86_64/CrcAppender"
     [ -f "$src" ] || die "CrcAppender not found at ${src} (is RepRapFirmware cloned?)."
     mkdir -p "${BIN_DIR}"
     chmod 755 "$src"
@@ -283,15 +286,15 @@ cmd_bootstrap() {
 run_eclipse_build() {
     local target="$1" import="$2"
     have eclipse || die "'eclipse' not found on PATH — install Eclipse CDT (or run './rrf.sh doctor')."
-    [ -d "${WORKSPACE_DIR}/RepRapFirmware" ] || die "RepRapFirmware/ is missing — run './rrf.sh bootstrap' first."
+    [ -d "${REPOS_DIR}/RepRapFirmware" ] || die "repos/RepRapFirmware/ is missing — run './rrf.sh bootstrap' first."
     [ -n "$(arm_gcc_path || true)" ] || die "ARM toolchain missing — run './rrf.sh bootstrap' first."
 
     export PATH="${BIN_DIR}:${PATH}"
 
     section "Building RepRapFirmware/${target}"
     info "ARM GCC: $(arm_gcc_path)"
-    local args=(-nosplash -application org.eclipse.cdt.managedbuilder.core.headlessbuild -data "${WORKSPACE_DIR}")
-    [ "$import" = "import" ] && args+=(-importAll "${WORKSPACE_DIR}")
+    local args=(-nosplash -application org.eclipse.cdt.managedbuilder.core.headlessbuild -data "${ECLIPSE_WS}")
+    [ "$import" = "import" ] && args+=(-importAll "${ECLIPSE_WS}")
     args+=(-build "RepRapFirmware/${target}")
 
     if eclipse "${args[@]}"; then
@@ -304,8 +307,9 @@ run_eclipse_build() {
 
 report_artifacts() {
     local target="$1" newest
-    # Firmware lands in a target-named output dir; surface the freshest binary.
-    newest="$(find "${WORKSPACE_DIR}" -maxdepth 3 -type d -name "*${target}*" \
+    # Firmware lands in a target-named output dir inside the RepRapFirmware
+    # project; surface the freshest binary.
+    newest="$(find "${REPOS_DIR}" -maxdepth 3 -type d -name "*${target}*" \
         -exec find {} -maxdepth 1 -name '*.bin' -printf '%T@ %p\n' \; 2>/dev/null \
         | sort -nr | head -1 | cut -d' ' -f2- || true)"
     if [ -n "$newest" ]; then
@@ -319,9 +323,9 @@ cmd_build()   { run_eclipse_build "${1:-$DEFAULT_TARGET}" "import"; }
 
 cmd_rebuild() {
     section "Clean rebuild"
-    if [ -d "${WORKSPACE_DIR}/.metadata" ]; then
+    if [ -d "${ECLIPSE_WS}/.metadata" ]; then
         info "Removing Eclipse workspace metadata for a fresh import…"
-        rm -rf "${WORKSPACE_DIR}/.metadata"
+        rm -rf "${ECLIPSE_WS}/.metadata"
     fi
     run_eclipse_build "${1:-$DEFAULT_TARGET}" "import"
 }
@@ -329,19 +333,26 @@ cmd_rebuild() {
 # --- Clean ------------------------------------------------------------------
 cmd_clean() {
     section "Cleaning build outputs"
-    cd "${WORKSPACE_DIR}"
     local removed=0
 
-    if [ -d .metadata ]; then rm -rf .metadata; ok "Removed .metadata"; removed=$((removed+1)); fi
-
-    # Generated per-target output dirs (they contain Duet build products).
-    for d in */; do
-        d="${d%/}"
-        case "$d" in RepRapFirmware|CoreN2G|FreeRTOS|RRFLibraries|CANlib|DuetWiFiSocketServer|WiFiSocketServerRTOS|tools) continue ;; esac
-        if compgen -G "${d}/*.bin" >/dev/null 2>&1 || compgen -G "${d}/*.elf" >/dev/null 2>&1; then
-            rm -rf "$d"; ok "Removed ${d}/"; removed=$((removed+1))
-        fi
+    # Eclipse workspace metadata (regenerated on next build), plus any stray
+    # copy left at the workspace root by an older layout.
+    for md in "${ECLIPSE_WS}/.metadata" "${WORKSPACE_DIR}/.metadata"; do
+        if [ -d "$md" ]; then rm -rf "$md"; ok "Removed ${md#${WORKSPACE_DIR}/}"; removed=$((removed+1)); fi
     done
+
+    # Per-target output dirs live inside the RepRapFirmware project; remove the
+    # ones that actually contain build products (never touches source dirs).
+    local rrf="${REPOS_DIR}/RepRapFirmware"
+    if [ -d "$rrf" ]; then
+        local d base
+        for d in "$rrf"/*/; do
+            d="${d%/}"; base="$(basename "$d")"
+            if compgen -G "${d}/*.bin" >/dev/null 2>&1 || compgen -G "${d}/*.elf" >/dev/null 2>&1; then
+                rm -rf "$d"; ok "Removed repos/RepRapFirmware/${base}/"; removed=$((removed+1))
+            fi
+        done
+    fi
 
     [ $removed -eq 0 ] && info "Nothing to clean."
     ok "Clean complete"

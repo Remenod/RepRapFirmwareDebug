@@ -1,14 +1,9 @@
-# Sibling repos cloned by builder.sh (each has its own git history/remote)
-/RepRapFirmware/
-/CoreN2G/
-/FreeRTOS/
-/RRFLibraries/
-/CANlib/
-/DuetWiFiSocketServer/
-/WiFiSocketServerRTOS/
+# Cloned Duet3D repos (each has its own git history/remote) + the Eclipse
+# workspace metadata that rrf.sh keeps alongside them.
+/repos/
 
 # Downloaded toolchains
 /tools/
 
-# Eclipse workspace metadata
+# Stray Eclipse metadata if a build is ever run at the workspace root
 /.metadata/
